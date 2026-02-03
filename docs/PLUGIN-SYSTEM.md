@@ -662,3 +662,122 @@ export const FileHooksPlugin: Plugin = async (input) => {
   }
 }
 ```
+
+---
+
+## OpenCode vs Claude Code：设计差异（细节版）
+
+这节不只对比 hooks，而是把 **“可扩展性、Agent/Skill 的表达能力、工具调用体系、权限与事件、运行架构”** 都拆开讲清楚。
+
+> 说明：这里的 “Claude Code” 指 Anthropic 的 Claude Code 工作流（基于 `CLAUDE.md` / `~/.claude/skills` / hooks 等约定）。不同版本/发行渠道可能存在差异，但核心思路大体一致：**以约定文件+内置能力为主**，而非通用插件系统。
+
+### 总览对比表（高密度）
+
+| 维度 | Claude Code | OpenCode |
+|------|------------|----------|
+| **扩展机制** | 以**约定文件**与内置能力为主（如 `CLAUDE.md`、skills、hooks） | **通用插件系统**（npm/本地插件）+ 配置目录加载 |
+| **“预置 Agent”能力** | 更接近“预置 prompt/skills”，通常是**单一主 Agent**（通过文档影响行为） | Agent 是一等公民：可以**预置多 Agent**（名字/模型/权限/模式），并可由插件注入 |
+| **Skill 的定位** | skills 更像“可复用操作手册/提示模板” | Skill 既可以是“提示模板”，也可以成为**可控调用的工具入口**（`skill` 工具） |
+| **工具系统（Tooling）** | 以产品内置工具为主；可通过 hooks 做外部动作，但通常不是“把工具定义发给模型”这种通用注册 | 内置工具 + 本地工具 + 插件工具 + MCP 工具统一注册到 `ToolRegistry`，并以 AI SDK 工具形式下发给模型 |
+| **工具可拦截性** | hooks 侧重“在某些事件点执行命令”，更像自动化脚本 | 既有 hooks/事件，也有**工具执行前/后拦截**（`tool.execute.before/after`），可改写输入/输出/元数据 |
+| **权限模型** | 更偏产品内置策略/确认弹窗 | 统一的权限系统（`PermissionNext`），支持 agent/session 合并规则，并覆盖 tool/skill/doom-loop 等 |
+| **事件总线** | 一般是“文件变更/命令触发”等有限事件视角 | 事件总线 + 插件订阅（`Plugin.trigger("event", ...)`），还可叠加实验性 transform hooks |
+| **配置分层/可移植性** | 约定文件为主，配置形态相对固定 | 多来源合并（全局/项目/目录/内联等），支持 `{env:VAR}`/`{file:path}` 动态引用 |
+| **多模态输入（图像）** | 取决于产品/模型能力，通常对上层用户透明 | 明确走“message parts”路径；会根据 `model.capabilities.input.image` 做降级/错误提示 |
+| **运行架构** | 通常深度绑定编辑器/集成环境 | CLI/TUI 自带本地 server，可独立运行；也可 attach 到远端 server |
+| **生态与复用** | 更像“配置/模板生态” | 更像“插件生态”（可发布 npm 包、可注入工具/认证/消息变换等） |
+
+### 1) “预置 Agent”的本质差异：文档约定 vs 可编程实体
+
+- **Claude Code**
+  - 你当然可以“提前写好”行为指南：`CLAUDE.md`、skills、甚至 hooks 触发的脚本。
+  - 但这种方式更像：**给同一个主 Agent 加更多上下文/约束**。它并不等同于“注册多个可选 Agent 实体”，也无法天然做到：
+    - 不同 Agent 绑定不同默认模型
+    - 不同 Agent 拥有不同权限/工具白名单
+    - 在同一会话里显式切换 agent（如 `@reviewer` / `@testgen`）并保留各自模式
+
+- **OpenCode**
+  - Agent 是配置化实体（并可由插件批量注入）。
+  - **实现落点**：
+    - Agent 加载：`packages/opencode/src/agent/agent.ts`
+    - 指令文件：`packages/opencode/src/session/instruction.ts`（`AGENTS.md`/`CLAUDE.md` fallback）
+    - 在会话 loop 中选择/应用 agent：`packages/opencode/src/session/prompt.ts`
+
+### 2) Tooling：Claude 偏“自动化脚本”，OpenCode 偏“工具注册 + 可观测执行”
+
+- **Claude Code**
+  - hooks 更像在特定时机执行 shell 命令/自动化动作。
+  - 对模型而言：更多是“在 prompt 里描述你能做什么”，而不是像 AI SDK 那样把工具 schema 发给模型并让模型结构化调用。
+
+- **OpenCode**
+  - 工具是统一注册的：内置工具 + 插件工具 + 本地工具 + MCP 工具。
+  - 工具以 schema 形式喂给模型，并且执行过程会被记录为 message parts（可追踪、可回放）。
+  - **实现落点**：
+    - 工具聚合：`packages/opencode/src/tool/registry.ts`
+    - 每轮对话 resolve 工具并构造执行上下文：`packages/opencode/src/session/prompt.ts`（`resolveTools()`）
+    - 工具调用流式处理：`packages/opencode/src/session/processor.ts`
+
+### 3) Skill：Claude 是“可读模板”，OpenCode 是“可调用/可控入口”
+
+- **Claude Code**
+  - skills 主要以“说明文档”的形态影响回答质量，调用方式多是隐式的（模型在文本里引用/遵循）。
+
+- **OpenCode**
+  - Skill 可以被显式列举并通过工具加载（`skill` tool）。
+  - Skill 也走权限校验，可被 agent 规则控制可用范围。
+  - **实现落点**：
+    - Skill 扫描/去重/加载：`packages/opencode/src/skill/skill.ts`
+    - Skill 工具：`packages/opencode/src/tool/skill.ts`
+
+### 4) 权限与安全边界：OpenCode 把“可控”做成系统能力
+
+- **Claude Code**
+  - 常见模式是：产品内置确认/策略 + hooks 外部执行。
+  - 能做到“要不要执行”，但通常难做到“按 agent/会话精细化策略合并+覆盖多类型动作（tool/skill/doom-loop）”。
+
+- **OpenCode**
+  - 权限是统一入口：tool/skill/doom-loop 等都能走 `PermissionNext.ask()`。
+  - agent 的 permission 与 session 的 permission 会合并，能做到**按上下文细粒度控制**。
+  - **实现落点**：
+    - 权限：`packages/opencode/src/permission/next.ts`
+    - doom-loop 检测：`packages/opencode/src/session/processor.ts`
+
+### 5) 消息变换与“可插拔的提示工程”：OpenCode 提供 transform hooks
+
+- **Claude Code**
+  - 你能通过约定文件影响系统提示，但对“消息管线”本身的可编程变换较少。
+
+- **OpenCode**
+  - 支持在关键节点对消息/系统提示做变换（实验性 hooks + 插件 hooks）。
+  - 这意味着：你可以实现更强的“提示工程中间层”（自动注入上下文、改写 tool result 格式、做结构化 memory 等）。
+  - **实现落点**：
+    - `Plugin.trigger("experimental.chat.messages.transform", ...)`：`packages/opencode/src/session/prompt.ts`
+    - 插件 hooks 定义与触发：`packages/opencode/src/plugin/index.ts`
+
+### 6) 运行架构：Claude 更偏“集成体验”，OpenCode 更偏“自带平台能力”
+
+- **Claude Code**
+  - 深度绑定编辑器/集成环境，优势是开箱即用与一致体验。
+  - 扩展点更多在“外部工具/脚本”层，而不是把整个能力抽象成可复用的 server/platform。
+
+- **OpenCode**
+  - CLI/TUI 默认启动本地 server，既能独立使用，也能 attach 远端。
+  - 插件拿到的 `PluginInput` 里含 `client/serverUrl/$`，所以插件可以在同一套 API 下做更多事（包括自定义认证）。
+  - **实现落点**：
+    - 插件输入：`packages/opencode/src/plugin/index.ts`
+    - CLI 独立/attach：`packages/opencode/src/cli/cmd/run.ts`、`packages/opencode/src/cli/cmd/serve.ts`
+
+### 7) 多模态（图像）与降级策略：OpenCode 明确化“能力矩阵”
+
+- **Claude Code**
+  - 多模态能力通常由产品/模型决定，对开发者来说更多是“能用/不能用”的黑箱体验。
+
+- **OpenCode**
+  - 模型能力被显式建模（capabilities），消息 parts（image/file）在发送前会做支持性检查；不支持时会转换为明确的错误提示文本。
+  - **实现落点**：`packages/opencode/src/provider/transform.ts`（`unsupportedParts()`）
+
+### 8) 你该如何选型（非常实用的判断）
+
+- 你想要的是：
+  - **“一套固定体验 + 少量自动化（hooks/脚本）”** → Claude Code 的方式更轻、更少工程化成本。
+  - **“可发布的插件生态 + 多 Agent + 可控工具/权限/消息管线”** → OpenCode 的插件系统更适合做“工程化平台”。

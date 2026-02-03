@@ -909,9 +909,7 @@ function unsupportedParts(msgs: ModelMessage[], model: Provider.Model) {
 
 对于不同的 Provider，OpenCode 会将图片转换为相应的格式：
 
-**OpenAI 兼容格式** (`packages/opencode/src/provider/sdk/openai-compatible/src/responses/convert-to-openai-responses-input.ts`):
-
-```typescript
+**OpenAI 兼容格式** (`packages/opencode/src/provider/sdk/openai-compatible/src/responses/convert-to-openai-responses-input.ts`):```typescript
 case "file": {
   if (part.mediaType.startsWith("image/")) {
     const mediaType = part.mediaType === "image/*" ? "image/jpeg" : part.mediaType
