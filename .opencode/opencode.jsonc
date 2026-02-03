@@ -9,8 +9,8 @@
       "npm": "@ai-sdk/anthropic",
       "name": "Anthropic Proxy (Qwen)",
       "options": {
-        "baseURL": "https://idealab.alibaba-inc.com/api/anthropic/v1",
-        "apiKey": "3377c2f3cf640a05703e40c186029f4a"
+        "baseURL": "",
+        "apiKey": ""
       },
       "models": {
         "qwen3-coder-plus": {

@@ -225,15 +225,140 @@ export function Session() {
   const exit = useExit()
 
   createEffect(() => {
-    const title = Locale.truncate(session()?.title ?? "", 50)
-    return exit.message.set(
-      [
-        ``,
-        `  █▀▀█  ${UI.Style.TEXT_DIM}${title}${UI.Style.TEXT_NORMAL}`,
-        `  █  █  ${UI.Style.TEXT_DIM}opencode -s ${session()?.id}${UI.Style.TEXT_NORMAL}`,
-        `  ▀▀▀▀  `,
-      ].join("\n"),
+    const info = session()
+    if (!info) return exit.message.clear()
+
+    const title = Locale.truncate(info.title ?? "", 50)
+
+    const msgs = messages()
+    const assistant = msgs.filter((m) => m.role === "assistant") as AssistantMessage[]
+    const partsByMessage = sync.data.part
+
+    const tools: ToolPart[] = []
+    for (const msg of msgs) {
+      const parts = partsByMessage[msg.id] ?? []
+      for (const part of parts as Part[]) {
+        if (part.type === "tool") tools.push(part as ToolPart)
+      }
+    }
+
+    const wallTimeSeconds = (info.time.updated - info.time.created) / 1000
+
+    const agentActiveMs = assistant.reduce((total, msg) => {
+      const created = msg.time?.created
+      const completed = msg.time?.completed
+      if (!created || !completed) return total
+      return total + (completed - created)
+    }, 0)
+
+    const apiMs = assistant.reduce((total, msg) => {
+      const anyMsg = msg as unknown as {
+        tokens?:
+          | {
+              input?: number
+              output?: number
+              reasoning?: number
+              cache?: { read?: number; write?: number }
+            }
+          | undefined
+      }
+      const tokens = anyMsg.tokens
+      const created = msg.time?.created
+      const completed = msg.time?.completed
+      if (!tokens || !created || !completed) return total
+      const hasUsage =
+        (tokens.input ?? 0) > 0 ||
+        (tokens.output ?? 0) > 0 ||
+        (tokens.cache?.read ?? 0) > 0 ||
+        (tokens.cache?.write ?? 0) > 0 ||
+        (tokens.reasoning ?? 0) > 0
+      if (!hasUsage) return total
+      return total + (completed - created)
+    }, 0)
+
+    const toolMs = tools.reduce((total, part) => {
+      const state = part.state as unknown as { time?: { start?: number; end?: number } }
+      const time = state.time
+      if (!time?.start || !time.end) return total
+      return total + (time.end - time.start)
+    }, 0)
+
+    const toolSuccess = tools.filter((part) => part.state.status === "completed").length
+    const toolError = tools.filter((part) => part.state.status === "error").length
+    const toolTotal = tools.length
+    const successRate = toolTotal === 0 ? 0 : (toolSuccess / toolTotal) * 100
+
+    const tokens = assistant.reduce(
+      (
+        acc,
+        msg,
+      ): {
+        input: number
+        output: number
+        reasoning: number
+        cache: { read: number; write: number }
+      } => {
+        const anyMsg = msg as unknown as {
+          tokens?:
+            | {
+                input?: number
+                output?: number
+                reasoning?: number
+                cache?: { read?: number; write?: number }
+              }
+            | undefined
+        }
+        const t = anyMsg.tokens
+        if (!t) return acc
+        acc.input += t.input ?? 0
+        acc.output += t.output ?? 0
+        acc.cache.read += t.cache?.read ?? 0
+        acc.cache.write += t.cache?.write ?? 0
+        acc.reasoning += t.reasoning ?? 0
+        return acc
+      },
+      {
+        input: 0,
+        output: 0,
+        reasoning: 0,
+        cache: { read: 0, write: 0 },
+      },
     )
+
+    const totalTokens = tokens.input + tokens.output + tokens.cache.read + tokens.cache.write + tokens.reasoning
+
+    const fmtSeconds = (seconds: number) => `${seconds.toFixed(1)}s`
+    const apiPct = agentActiveMs > 0 ? (apiMs / agentActiveMs) * 100 : 0
+    const toolPct = agentActiveMs > 0 ? (toolMs / agentActiveMs) * 100 : 0
+
+    const wallLine = `总耗时：                    ${fmtSeconds(wallTimeSeconds)}`
+    const agentLine = `Agent 活动时间：            ${fmtSeconds(agentActiveMs / 1000)}`
+    const apiLine = `» API 时间：                ${fmtSeconds(apiMs / 1000)} (${apiPct.toFixed(1)}%)`
+    const toolTimeLine = `» 工具时间：                ${fmtSeconds(toolMs / 1000)} (${toolPct.toFixed(1)}%)`
+
+    const sessionLine = `会话 ID：                   ${info.id}`
+    const toolLine = `工具调用：                  ${toolTotal} ( ✓ ${toolSuccess} x ${toolError} )`
+    const successLine = `成功率：                    ${successRate.toFixed(1)}%`
+    const tokenLine = `Token 使用量：              prompt ${tokens.input} · completion ${tokens.output} · total ${totalTokens}`
+
+    const lines = [
+      "",
+      `opencode CLI已经关闭。再见！`,
+      "",
+      "性能",
+      wallLine,
+      agentLine,
+      apiLine,
+      toolTimeLine,
+      "",
+      "统计",
+      sessionLine,
+      toolLine,
+      successLine,
+      tokenLine,
+    ]
+
+    return exit.message.set(lines.join("\n"))
   })
 
   useKeyboard((evt) => {

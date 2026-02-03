@@ -12,30 +12,37 @@
 1. 你先不要急着自己做，而是逐步引导我了解项目的结构和架构设计之后，然后我们再交流
 2. 我们的交流结果都可以写入到docs中
 
-# 在用户结束的时候增加 信息里面应该要包含使用的token数量，sessionId，使用时长，调用Tool Calls数量和时间，
- Agent Active
- Interaction Summary                                                                                               │
-│  Session ID:                 a8805a31-6edf-4f57-be4e-e88e0572568e                                                  │
-│  Tool Calls:                 0 ( ✓ 0 x 0 )                                                                         │
-│  Success Rate:               0.0%                                                                                  │
-│                                                                                                                    │
-│  Performance                                                                                                       │
-│  Wall Time:                  30.8s                                                                                 │
-│  Agent Active:               0s                                                                                    │
-│    » API Time:               0s (0.0%)                                                                             │
-│    » Tool Time:              0s (0.0%)                                                                             
-╭────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
-│                                                                                                                                                    │
-│  opencode CLI已经关闭。再见！                                                                                                                         │
-│                                                                                                                                                    │
-│  性能                                                                                                                                              │
-│  总耗时：                    18.2s                                                                                                                 │
-│  iFlow CLI活动时间：         0s                                                                                                                    │
-│    » API 时间：              0s (0.0%)                                                                                                             │
-│    » 工具时间：              0s (0.0%)                                                                                                             │
-│                                                                                                                                                    │
-│                                                                                                                                                    │
-╰───────────────────────────────────────────────────
+### 会话结束时的统计信息（待实现）
+
+在用户结束 CLI 会话时，终端需要额外输出一段「会话总结信息」，至少包含：
+
+- **Interaction Summary**
+  - **Session ID**：本次会话的 ID
+  - **Token 使用量**：prompt / completion / total（如果能拿到的话）
+  - **Tool Calls**：总次数，以及成功 / 失败次数
+  - **Success Rate**：成功率（成功调用次数 / 总调用次数）
+
+- **Performance**
+  - **Wall Time**：本次会话从开始到结束的总耗时
+  - **Agent Active**：Agent 实际工作的总时间
+  - **API Time**：调用 LLM API 的累计时间
+  - **Tool Time**：调用 Tool 的累计时间
+
+示例（参考 iFlow CLI 的输出风格）：
+
+Interaction Summary
+  Session ID:                 a8805a31-6edf-4f57-be4e-e88e0572568e
+  Tool Calls:                 0 ( ✓ 0 x 0 )
+  Success Rate:               0.0%
+
+  Performance
+  Wall Time:                  30.8s
+  Agent Active:               0s
+    » API Time:               0s (0.0%)
+    » Tool Time:              0s (0.0%)
+
+opencode CLI 已经关闭。再见！
+
 
 ## OpenCode CLI/TUI 架构学习笔记（2025-02-03）
 
