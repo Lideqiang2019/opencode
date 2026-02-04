@@ -343,7 +343,7 @@ export function Session() {
 
     const lines = [
       "",
-      `opencode CLI已经关闭。再见！`,
+      `tunacode CLI已经关闭。再见！`,
       "",
       "性能",
       wallLine,
