@@ -327,23 +327,43 @@ export function Session() {
 
     const totalTokens = tokens.input + tokens.output + tokens.cache.read + tokens.cache.write + tokens.reasoning
 
+    // 格式化时间：时分秒
+    const fmtDuration = (seconds: number): string => {
+      const hours = Math.floor(seconds / 3600)
+      const minutes = Math.floor((seconds % 3600) / 60)
+      const secs = Math.floor(seconds % 60)
+      const parts: string[] = []
+      if (hours > 0) parts.push(`${hours}h`)
+      if (minutes > 0) parts.push(`${minutes}m`)
+      if (secs > 0 || parts.length === 0) parts.push(`${secs}s`)
+      return parts.join("")
+    }
+
+    // 格式化 token：k 单位
+    const fmtTokens = (count: number): string => {
+      if (count === 0) return "0"
+      if (count < 1000) return count.toString()
+      return `${(count / 1000).toFixed(1)}k`
+    }
+
     const fmtSeconds = (seconds: number) => `${seconds.toFixed(1)}s`
     const apiPct = agentActiveMs > 0 ? (apiMs / agentActiveMs) * 100 : 0
     const toolPct = agentActiveMs > 0 ? (toolMs / agentActiveMs) * 100 : 0
 
-    const wallLine = `总耗时：                    ${fmtSeconds(wallTimeSeconds)}`
-    const agentLine = `Agent 活动时间：            ${fmtSeconds(agentActiveMs / 1000)}`
-    const apiLine = `» API 时间：                ${fmtSeconds(apiMs / 1000)} (${apiPct.toFixed(1)}%)`
-    const toolTimeLine = `» 工具时间：                ${fmtSeconds(toolMs / 1000)} (${toolPct.toFixed(1)}%)`
+    const labelWidth = 24
+    const wallLine = `  总耗时：${" ".repeat(labelWidth - "总耗时：".length)}${fmtDuration(wallTimeSeconds)}`
+    const agentLine = `  Agent 活动时间：${" ".repeat(labelWidth - "Agent 活动时间：".length)}${fmtDuration(agentActiveMs / 1000)}`
+    const apiLine = `  » API 时间：${" ".repeat(labelWidth - "» API 时间：".length)}${fmtSeconds(apiMs / 1000)} (${apiPct.toFixed(1)}%)`
+    const toolTimeLine = `  » 工具时间：${" ".repeat(labelWidth - "» 工具时间：".length)}${fmtSeconds(toolMs / 1000)} (${toolPct.toFixed(1)}%)`
 
-    const sessionLine = `会话 ID：                   ${info.id}`
-    const toolLine = `工具调用：                  ${toolTotal} ( ✓ ${toolSuccess} x ${toolError} )`
-    const successLine = `成功率：                    ${successRate.toFixed(1)}%`
-    const tokenLine = `Token 使用量：              prompt ${tokens.input} · completion ${tokens.output} · total ${totalTokens}`
+    const sessionLine = `  会话 ID：${" ".repeat(labelWidth - "会话 ID：".length)}${info.id}`
+    const toolLine = `  工具调用：${" ".repeat(labelWidth - "工具调用：".length)}${toolTotal} ( ✓ ${toolSuccess} × ${toolError} )`
+    const successLine = `  成功率：${" ".repeat(labelWidth - "成功率：".length)}${successRate.toFixed(1)}%`
+    const tokenLine = `  Token 使用量：${" ".repeat(labelWidth - "Token 使用量：".length)}prompt ${fmtTokens(tokens.input)} · completion ${fmtTokens(tokens.output)} · total ${fmtTokens(totalTokens)}`
 
     const lines = [
       "",
-      `tunacode CLI已经关闭。再见！`,
+      `tunacode CLI 已经关闭。再见！`,
       "",
       "性能",
       wallLine,
@@ -356,6 +376,7 @@ export function Session() {
       toolLine,
       successLine,
       tokenLine,
+      "",
     ]
 
     return exit.message.set(lines.join("\n"))
